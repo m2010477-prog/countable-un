@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Battleship: Countable vs Uncountable</title>
+    <style>
+        :root {
+            --navy-dark: #1a2a3a;
+            --navy-muted: #2c3e50;
+            --accent-red: #c0392b;
+            --soft-red: #e74c3c;
+            --text-light: #ecf0f1;
+            --grid-bg: #34495e;
+        }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background-color: var(--navy-dark); color: var(--text-light); display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
+        .stats { background: var(--navy-muted); padding: 10px 25px; border-radius: 4px; border-left: 5px solid var(--accent-red); margin-bottom: 20px; font-weight: bold; }
+        #grid { display: grid; grid-template-columns: 30px repeat(10, 40px); grid-template-rows: 30px repeat(10, 40px); gap: 2px; background: var(--grid-bg); padding: 10px; border-radius: 8px; }
+        .cell { width: 40px; height: 40px; background: #ecf0f1; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #2c3e50; font-weight: bold; transition: 0.2s; }
+        .cell:hover { background: #dcdde1; }
+        .label { background: transparent; color: #bdc3c7; cursor: default; font-size: 14px; }
+        .miss { background: #54a0ff !important; color: white !important; }
+        .miss::after { content: '•'; font-size: 24px; }
+        .hit { background: var(--soft-red) !important; color: white !important; }
+        .hit::after { content: '✕'; }
+        .sunk { background: var(--accent-red) !important; color: white !important; }
+        .sunk::after { content: '🚢'; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); justify-content: center; align-items: center; z-index: 1000; }
+        .modal-content { background: white; color: #2c3e50; padding: 30px; border-radius: 12px; width: 90%; max-width: 500px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .options { display: grid; gap: 10px; margin-top: 20px; }
+        button.opt-btn { padding: 12px; border: 1px solid #dcdde1; background: #f8f9fa; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; color: #2c3e50; }
+        button.opt-btn:hover { border-color: var(--accent-red); background: #eee; }
+        .correct { background: #27ae60 !important; color: white !important; }
+        .wrong { background: #c0392b !important; color: white !important; }
+    </style>
+</head>
+<body>
+
+    <h1>🚢 Food Battleship</h1>
+    <p>Countable & Uncountable Mission</p>
+
+    <div class="stats">FLEET STATUS: <span id="sunk-count">0</span> / 8 SHIPS SUNK</div>
+
+    <div id="grid"></div>
+
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <h3 id="q-category" style="color: #c0392b; text-transform: uppercase; font-size: 0.8em; margin: 0;">Grammar Check</h3>
+            <div id="q-text" style="font-size: 1.25em; margin: 20px 0; font-weight: 600; line-height: 1.4;"></div>
+            <div id="q-options" class="options"></div>
+        </div>
+    </div>
+
+    <script>
+        const GRID_SIZE = 10;
+        const SHIP_TYPES = [4, 3, 3, 2, 2, 1, 1, 1];
+        let board = [], ships = [], sunkShips = 0;
+        let currentQuestions = [];
+
+        // Полный список 50 уникальных вопросов на основе предоставленных материалов
+        const masterQuestions = [
+            { q: "Is 'bread' countable or uncountable?", o: ["Countable", "Uncountable"], a: 1 },
+            { q: "Is 'tomato' countable or uncountable?", o: ["Countable", "Uncountable"], a: 0 },
+            { q: "ODD ONE OUT: rice - pasta - tomato", o: ["rice", "pasta", "tomato"], a: 2 },
+            { q: "ODD ONE OUT: bread - egg - toast", o: ["bread", "egg", "toast"], a: 1 },
+            { q: "ODD ONE OUT: milk - cheese - pancake", o: ["milk", "cheese", "pancake"], a: 2 },
+            { q: "ODD ONE OUT: butter - strawberry - sugar", o: ["butter", "strawberry", "sugar"], a: 1 },
+            { q: "A/AN/X: I'd like ____ banana, please.", o: ["a", "an", "X"], a: 0 },
+            { q: "A/AN/X: I think ____ orange juice is great!", o: ["a", "an", "X"], a: 2 },
+            { q: "A/AN/X: I usually eat ____ eggs in the morning.", o: ["a", "an", "X"], a: 2 },
+            { q: "A/AN/X: My mum always eats ____ apple a day.", o: ["a", "an", "X"], a: 1 },
+            { q: "A/AN/X: Tom usually has ____ ham sandwich for lunch.", o: ["a", "an", "X"], a: 0 },
+            { q: "HOW MANY/MUCH: ________ soda do you drink every week?", o: ["How many", "How much"], a: 1 },
+            { q: "HOW MANY/MUCH: ________ burgers do you eat every week?", o: ["How many", "How much"], a: 0 },
+            { q: "HOW MANY/MUCH: ________ jars of jam does your family eat?", o: ["How many", "How much"], a: 0 },
+            { q: "HOW MANY/MUCH: ________ chocolate do you eat a week?", o: ["How many", "How much"], a: 1 },
+            { q: "HOW MANY/MUCH: ________ apples do you eat every week?", o: ["How many", "How much"], a: 0 },
+            { q: "COMPLETE: A: How ___ milk is there? B: There isn't ___ milk!", o: ["many / some", "much / any"], a: 1 },
+            { q: "COMPLETE: A: How many sausages ___ there? B: There are ___.", o: ["is / some", "are / some"], a: 1 },
+            { q: "CORRECT: There is a bananas in the fridge.", o: ["There is some bananas", "There are some bananas"], a: 1 },
+            { q: "Is 'flour' countable or uncountable?", o: ["Countable", "Uncountable"], a: 1 },
+            { q: "Is 'sugar' countable or uncountable?", o: ["Countable", "Uncountable"], a: 1 },
+            { q: "Is 'lemon' countable or uncountable?", o: ["Countable", "Uncountable"], a: 0 },
+            { q: "Is 'egg' countable or uncountable?", o: ["Countable", "Uncountable"], a: 0 },
+            { q: "Is 'strawberry' countable or uncountable?", o: ["Countable", "Uncountable"], a: 0 },
+            { q: "Is 'butter' countable или uncountable?", o: ["Countable", "Uncountable"], a: 1 },
+            { q: "Is 'milk' countable или uncountable?", o: ["Countable", "Uncountable"], a: 1 },
+            { q: "Is 'chocolate' (as a substance) countable или uncountable?", o: ["Countable", "Uncountable"], a: 1 },
+            { q: "Is 'sausage' countable или uncountable?", o: ["Countable", "Uncountable"], a: 0 },
+            { q: "Is 'money' countable или uncountable?", o: ["Countable", "Uncountable"], a: 1 },
+            { q: "A/AN/X: Lucas often has ____ egg for breakfast.", o: ["a", "an", "X"], a: 1 },
+            { q: "A/AN/X: Tom always has ____ milk on his cereal.", o: ["a", "an", "X"], a: 2 },
+            { q: "A/AN/X: Lucas usually has ____ banana with lunch.", o: ["a", "an", "X"], a: 0 },
+            { q: "A/AN/X: Tom likes bread with ____ butter.", o: ["a", "an", "X"], a: 2 },
+            { q: "CONTAINERS: A ____ of chocolate.", o: ["bar", "can", "jar"], a: 0 },
+            { q: "CONTAINERS: A ____ of water.", o: ["bottle", "packet", "carton"], a: 0 },
+            { q: "CONTAINERS: A ____ of cola.", o: ["can", "packet", "bar"], a: 0 },
+            { q: "CONTAINERS: A ____ of juice.", o: ["carton", "jar", "can"], a: 0 },
+            { q: "CONTAINERS: A ____ of jam.", o: ["jar", "packet", "bar"], a: 0 },
+            { q: "CONTAINERS: A ____ of biscuits.", o: ["packet", "bottle", "carton"], a: 0 },
+            { q: "ODD ONE OUT: potato - tomato - sugar", o: ["potato", "tomato", "sugar"], a: 2 },
+            { q: "ODD ONE OUT: yoghurt - juice - milk", o: ["yoghurt", "juice", "milk"], a: 0 },
+            { q: "HOW MANY/MUCH: ________ cheese is there?", o: ["How many", "How much"], a: 1 },
+            { q: "HOW MANY/MUCH: ________ water is there?", o: ["How many", "How much"], a: 1 },
+            { q: "Are there ____ eggs? (Question form)", o: ["some", "any"], a: 1 },
+            { q: "There are ____ sausages. (Positive form)", o: ["some", "any"], a: 0 },
+            { q: "There isn't ____ any flour. (Negative form)", o: ["some", "any"], a: 1 },
+            { q: "Is there ____ milk? (Question form)", o: ["some", "any"], a: 1 },
+            { q: "There is ____ milk. (Positive form)", o: ["some", "any"], a: 0 },
+            { q: "There aren't ____ pictures on the wall.", o: ["some", "any"], a: 1 },
+            { q: "There are ____ plants in the kitchen.", o: ["some", "any"], a: 0 }
+        ];
+
+        function initGame() {
+            board = Array(GRID_SIZE).fill().map(() => Array(GRID_SIZE).fill(0));
+            ships = []; 
+            sunkShips = 0;
+            currentQuestions = [...masterQuestions]; // Копируем вопросы для удаления
+            document.getElementById('sunk-count').innerText = 0;
+            placeShips();
+            renderBoard();
+        }
+
+        function placeShips() {
+            SHIP_TYPES.forEach(len => {
+                let placed = false;
+                while (!placed) {
+                    const vertical = Math.random() > 0.5;
+                    const r = Math.floor(Math.random() * (vertical ? GRID_SIZE - len : GRID_SIZE));
+                    const c = Math.floor(Math.random() * (vertical ? GRID_SIZE : GRID_SIZE - len));
+                    if (canPlace(r, c, len, vertical)) {
+                        const shipCells = [];
+                        for (let i = 0; i < len; i++) {
+                            const currR = vertical ? r + i : r;
+                            const currC = vertical ? c : c + i;
+                            board[currR][currC] = 1;
+                            shipCells.push({r: currR, c: currC, hit: false});
+                        }
+                        ships.push({cells: shipCells, sunk: false});
+                        placed = true;
+                    }
+                }
+            });
+        }
+
+        function canPlace(r, c, len, vertical) {
+            for (let i = -1; i <= len; i++) {
+                for (let j = -1; j <= 1; j++) {
+                    const row = vertical ? r + i : r + j;
+                    const col = vertical ? c + j : c + i;
+                    if (row >= 0 && row < GRID_SIZE && col >= 0 && col < GRID_SIZE) {
+                        if (board[row][col] === 1) return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        function renderBoard() {
+            const grid = document.getElementById('grid');
+            grid.innerHTML = '';
+            grid.appendChild(createCell('', 'label'));
+            for (let i = 0; i < GRID_SIZE; i++) grid.appendChild(createCell(String.fromCharCode(65 + i), 'label'));
+            for (let r = 0; r < GRID_SIZE; r++) {
+                grid.appendChild(createCell(r + 1, 'label'));
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    const cell = createCell('', 'cell');
+                    cell.dataset.r = r; cell.dataset.c = c;
+                    cell.onclick = () => handleShoot(r, c, cell);
+                    grid.appendChild(cell);
+                }
+            }
+        }
+
+        function createCell(text, className) {
+            const div = document.createElement('div');
+            div.className = className; div.innerText = text;
+            return div;
+        }
+
+        function handleShoot(r, c, el) {
+            if (el.classList.contains('hit') || el.classList.contains('miss') || el.classList.contains('sunk')) return;
+            if (board[r][c] === 1) {
+                el.classList.add('hit');
+                checkSunk(r, c);
+            } else {
+                el.classList.add('miss');
+                showQuestion();
+            }
+        }
+
+        function checkSunk(r, c) {
+            ships.forEach(ship => {
+                const cell = ship.cells.find(cell => cell.r === r && cell.c === c);
+                if (cell) cell.hit = true;
+                if (!ship.sunk && ship.cells.every(c => c.hit)) {
+                    ship.sunk = true; sunkShips++;
+                    document.getElementById('sunk-count').innerText = sunkShips;
+                    ship.cells.forEach(c => {
+                        const cellEl = document.querySelector(`[data-r="${c.r}"][data-c="${c.c}"]`);
+                        cellEl.className = 'cell sunk';
+                    });
+                    if (sunkShips === SHIP_TYPES.length) alert("VICTORY! The ocean is safe.");
+                }
+            });
+        }
+
+        function showQuestion() {
+            if (currentQuestions.length === 0) {
+                // Если вопросы закончились (маловероятно для 100 клеток), перезагружаем список
+                currentQuestions = [...masterQuestions];
+            }
+
+            const modal = document.getElementById('modal');
+            const qIndex = Math.floor(Math.random() * currentQuestions.length);
+            const q = currentQuestions[qIndex];
+            
+            document.getElementById('q-text').innerText = q.q;
+            const optionsDiv = document.getElementById('q-options');
+            optionsDiv.innerHTML = '';
+
+            q.o.forEach((opt, index) => {
+                const btn = document.createElement('button');
+                btn.className = 'opt-btn';
+                btn.innerText = opt;
+                btn.onclick = () => {
+                    if (index === q.a) {
+                        btn.classList.add('correct');
+                        // Удаляем вопрос из списка, чтобы он не повторился
+                        currentQuestions.splice(qIndex, 1);
+                        setTimeout(() => modal.style.display = 'none', 600);
+                    } else {
+                        btn.classList.add('wrong');
+                        setTimeout(() => btn.classList.remove('wrong'), 800);
+                    }
+                };
+                optionsDiv.appendChild(btn);
+            });
+            modal.style.display = 'flex';
+        }
+
+        initGame();
+    </script>
+</body>
+</html>
